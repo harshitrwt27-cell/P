@@ -73,6 +73,22 @@
         return REMOTE_BACKEND;
     }
 
+    function getGoogleMapsApiKey() {
+        const runtimeOverride = window.__PBL_GOOGLE_MAPS_API_KEY__;
+        if (runtimeOverride && typeof runtimeOverride === 'string') {
+            return runtimeOverride.trim();
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const queryKey = params.get('google_maps_api_key');
+        if (queryKey && typeof queryKey === 'string') {
+            window.localStorage.setItem('pbl_google_maps_api_key', queryKey.trim());
+            return queryKey.trim();
+        }
+
+        return (window.localStorage.getItem('pbl_google_maps_api_key') || '').trim();
+    }
+
     function getRegion(paramRegion) {
         const params = new URLSearchParams(window.location.search);
         return params.get(paramRegion) || 'Uttarakhand';
@@ -81,6 +97,7 @@
     window.PBL_CONFIG = {
         getApiBaseUrl,
         getRegion,
+        getGoogleMapsApiKey,
         normalize
     };
 })();
