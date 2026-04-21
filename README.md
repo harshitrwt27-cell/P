@@ -1,6 +1,10 @@
 # 🚍 Bus Route Optimizer Frontend
 
-Static HTML frontend for the Bus Route Optimization system, deployed on Vercel.
+Static-first frontend for the Bus Route Optimization system.
+
+It can run in two modes:
+- Integrated mode: served directly by Flask app.py
+- Static hosting mode: deployed on Vercel/Netlify/GitHub Pages
 
 ## 📦 Project Structure
 
@@ -19,10 +23,14 @@ pbl-daa-frontend/
 
 ## 🔗 Backend Integration
 
-This frontend communicates with the backend API at:
-```
-https://pbl-daa-1-1.onrender.com
-```
+Backend URL is selected automatically through public/config.js.
+
+Resolution priority:
+1. URL query param: ?backend=https://your-api
+2. Saved localStorage value
+3. Local development fallback: http://localhost:5000
+4. Same-origin API when served by Flask
+5. Remote fallback for static hosts: https://pbl-daa-1-1.onrender.com
 
 ### API Endpoints Used:
 - `POST /api/find-route` - Find optimal route
@@ -76,14 +84,13 @@ http-server
 
 ## 🔒 Environment Variables
 
-No environment variables needed for static deployment. The backend URL is hardcoded to:
-```
-https://pbl-daa-1-1.onrender.com
-```
+No environment variables are required for static deployment.
 
-To change the backend URL, edit the `API_BASE_URL` variable in:
-- `route.html`
-- `network.html`
+To override backend at runtime, open pages with:
+- route.html?region=Uttarakhand&backend=https://your-api
+- network.html?region=India&backend=https://your-api
+
+The selection is persisted in localStorage for next visits.
 
 ## 📝 Notes
 
@@ -101,5 +108,5 @@ To change the backend URL, edit the `API_BASE_URL` variable in:
 
 ---
 
-**Backend**: https://pbl-daa-1-1.onrender.com
-**Status**: Ready for deployment ✅
+**Backend**: Dynamic (auto-detected)
+**Status**: Ready for integrated Flask serving and static deployment ✅
