@@ -1,7 +1,7 @@
 (function () {
     const REMOTE_BACKEND = 'https://pbl-daa-1-1.onrender.com';
     const STORAGE_KEY = 'pbl_backend_url';
-    const DEFAULT_GOOGLE_MAPS_API_KEY = '';
+    const DEFAULT_GOOGLE_MAPS_API_KEY = 'AIzaSyALbCCPqlurlk8Std1nDdBHukPK_FV4Kdw';
 
     function normalize(url) {
         if (!url || typeof url !== 'string') {
