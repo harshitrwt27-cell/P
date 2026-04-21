@@ -10,10 +10,11 @@
 </head>
 <body>
     <div class="container">
-        <div class="header-row">
+        <div class="header-row reveal-on-scroll">
             <div>
                 <h1>🚍 Bus Route Optimizer</h1>
                 <p class="subtitle" id="regionName">Region</p>
+                <p class="backend-pill" id="backendBadge">Backend: Detecting...</p>
             </div>
             <a href="index.html" class="region-button back-link">← Change Region</a>
         </div>
@@ -23,7 +24,7 @@
             <a href="#" id="networkLink">Network Map</a>
         </nav>
 
-        <section class="page-intro">
+        <section class="page-intro reveal-on-scroll">
             <h2>Plan Your Journey</h2>
             <p>Choose your algorithm, fetch your nearest stop, and compare optimized travel distance and time in one place.</p>
             <div class="intro-grid">
@@ -33,7 +34,7 @@
             </div>
         </section>
 
-        <form id="routeForm" onsubmit="return false;">
+        <form id="routeForm" class="reveal-on-scroll" onsubmit="return false;">
             <div class="form-group">
                 <label>Algorithm:</label>
                 <select id="algorithm">
@@ -76,7 +77,7 @@
 
         <div id="error" class="is-hidden"></div>
         <div id="result" class="is-hidden"></div>
-        <div id="mapWrap" class="map-wrap is-hidden">
+        <div id="mapWrap" class="map-wrap is-hidden reveal-on-scroll">
             <div class="map-head">
                 <h3>Interactive Route Map</h3>
                 <span id="mapDistance"></span>
@@ -85,8 +86,10 @@
         </div>
     </div>
 
+    <script src="public/config.js"></script>
+    <script src="public/animations.js"></script>
     <script>
-    const API_BASE_URL = "https://pbl-daa-1-1.onrender.com";
+    const API_BASE_URL = window.PBL_CONFIG.getApiBaseUrl();
     
     function apiUrl(path) {
         return `${API_BASE_URL}${path}`;
@@ -97,7 +100,7 @@
         return searchParams.get(param) || 'Uttarakhand';
     }
 
-    const region = getUrlParam('region');
+    const region = window.PBL_CONFIG.getRegion('region');
     const REGION_MAP = {
         'Uttarakhand': { name: 'Uttarakhand Hilly Region', networkLink: 'network.html?region=Uttarakhand' },
         'India': { name: 'India Wide Highways', networkLink: 'network.html?region=India' }
@@ -120,9 +123,28 @@
     }
 
     function initPage() {
+        const badge = document.getElementById('backendBadge');
+        badge.textContent = `Backend: ${API_BASE_URL}`;
+        fetch(apiUrl('/api/health'))
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(() => {
+                badge.textContent = `Backend: Connected (${API_BASE_URL})`;
+            })
+            .catch(() => {
+                badge.textContent = `Backend: Not reachable (${API_BASE_URL})`;
+            });
+
         document.getElementById('regionName').textContent = REGION_MAP[region]?.name || region;
-        document.getElementById('routeLink').href = `route.html?region=${region}`;
-        document.getElementById('networkLink').href = REGION_MAP[region]?.networkLink || '#';
+        document.getElementById('routeLink').href = `route.html?region=${region}&backend=${encodeURIComponent(API_BASE_URL)}`;
+        document.getElementById('networkLink').href = `${REGION_MAP[region]?.networkLink || '#'}&backend=${encodeURIComponent(API_BASE_URL)}`;
+
+        const backLink = document.querySelector('.back-link');
+        backLink.href = `index.html?backend=${encodeURIComponent(API_BASE_URL)}`;
         
         // Fetch stops from backend
         console.log('Fetching stops for region:', region);
@@ -384,18 +406,25 @@
         routeMarkers.forEach(marker => map.removeLayer(marker));
         routeMarkers = [];
 
-        routeLayer = L.polyline(data.coordinates, {
+        routeLayer = L.polyline([], {
             color: '#0fbab0',
             weight: 5,
             opacity: 0.86
         }).addTo(map);
 
+        data.coordinates.forEach((coord, index) => {
+            setTimeout(() => {
+                routeLayer.addLatLng(coord);
+                if (index === data.coordinates.length - 1) {
+                    map.fitBounds(routeLayer.getBounds(), { padding: [24, 24] });
+                }
+            }, index * 120);
+        });
+
         const startMarker = L.marker(data.coordinates[0]).addTo(map).bindPopup(`<b>START</b><br>${data.path[0]}`);
         const endMarker = L.marker(data.coordinates[data.coordinates.length - 1]).addTo(map)
             .bindPopup(`<b>END</b><br>${data.path[data.path.length - 1]}`);
         routeMarkers.push(startMarker, endMarker);
-
-        map.fitBounds(routeLayer.getBounds(), { padding: [24, 24] });
         setTimeout(() => map.invalidateSize(), 100);
     }
 

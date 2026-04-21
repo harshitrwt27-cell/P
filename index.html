@@ -8,28 +8,29 @@
 </head>
 <body>
     <div class="container">
-        <section class="hero-panel">
+        <section class="hero-panel reveal-on-scroll">
             <p class="hero-label">Smart Transit Navigation</p>
             <h1>🚍 Bus Route Optimizer</h1>
             <p class="subtitle">Choose your region and get faster route planning with algorithm-based optimization.</p>
+            <p class="backend-pill" id="backendBadge">Backend: Detecting...</p>
             <div class="hero-kpis">
                 <div class="kpi-card">
-                    <span class="kpi-value">2</span>
+                    <span class="kpi-value" data-counter="2">0</span>
                     <span class="kpi-label">Regions</span>
                 </div>
                 <div class="kpi-card">
-                    <span class="kpi-value">19</span>
+                    <span class="kpi-value" data-counter="19">0</span>
                     <span class="kpi-label">Total Stops</span>
                 </div>
                 <div class="kpi-card">
-                    <span class="kpi-value">2</span>
+                    <span class="kpi-value" data-counter="2">0</span>
                     <span class="kpi-label">Algorithms</span>
                 </div>
             </div>
         </section>
 
         <div class="region-grid">
-            <div class="region-card">
+            <div class="region-card tilt-card reveal-on-scroll">
                 <span class="region-badge mountain">Mountain Terrain</span>
                 <div class="region-icon">⛰️</div>
                 <h2>Uttarakhand Hilly Region</h2>
@@ -41,12 +42,12 @@
                 </div>
 
                 <div class="cta-row">
-                    <a href="route.html?region=Uttarakhand" class="region-button">Find Route</a>
-                    <a href="network.html?region=Uttarakhand" class="region-button secondary">View Network</a>
+                    <a href="route.html?region=Uttarakhand" class="region-button region-link" data-region="Uttarakhand">Find Route</a>
+                    <a href="network.html?region=Uttarakhand" class="region-button secondary region-link" data-region="Uttarakhand">View Network</a>
                 </div>
             </div>
 
-            <div class="region-card">
+            <div class="region-card tilt-card reveal-on-scroll">
                 <span class="region-badge highway">National Corridors</span>
                 <div class="region-icon">🗺️</div>
                 <h2>India Wide Highways</h2>
@@ -58,8 +59,8 @@
                 </div>
 
                 <div class="cta-row">
-                    <a href="route.html?region=India" class="region-button">Find Route</a>
-                    <a href="network.html?region=India" class="region-button secondary">View Network</a>
+                    <a href="route.html?region=India" class="region-button region-link" data-region="India">Find Route</a>
+                    <a href="network.html?region=India" class="region-button secondary region-link" data-region="India">View Network</a>
                 </div>
             </div>
         </div>
@@ -72,5 +73,35 @@
             <p>Try both regions to compare route behavior in dense highway graphs versus hilly transport networks.</p>
         </div>
     </div>
+
+    <script src="public/config.js"></script>
+    <script src="public/animations.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const backend = window.PBL_CONFIG.getApiBaseUrl();
+        const badge = document.getElementById('backendBadge');
+        badge.textContent = `Backend: ${backend}`;
+
+        fetch(`${backend}/api/health`)
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(() => {
+                badge.textContent = `Backend: Connected (${backend})`;
+            })
+            .catch(() => {
+                badge.textContent = `Backend: Not reachable (${backend})`;
+            });
+
+        document.querySelectorAll('.region-link').forEach((link) => {
+            const url = new URL(link.getAttribute('href'), window.location.href);
+            url.searchParams.set('backend', backend);
+            link.setAttribute('href', `${url.pathname}${url.search}`);
+        });
+    });
+    </script>
 </body>
 </html>

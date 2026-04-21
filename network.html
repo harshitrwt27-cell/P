@@ -12,10 +12,11 @@
 </head>
 <body>
     <div class="container">
-        <div class="header-row">
+        <div class="header-row reveal-on-scroll">
             <div>
                 <h1>🗺️ Bus Network Map</h1>
                 <p class="subtitle" id="regionName">Region</p>
+                <p class="backend-pill" id="backendBadge">Backend: Detecting...</p>
             </div>
             <a href="index.html" class="region-button back-link">← Change Region</a>
         </div>
@@ -25,7 +26,7 @@
             <a href="#" id="networkLink" aria-current="page">Network Map</a>
         </nav>
 
-        <section class="page-intro">
+        <section class="page-intro reveal-on-scroll">
             <h2>Explore Network Topology</h2>
             <p>Inspect stop-level connections, validate graph density, and open precise coordinates in Google Maps.</p>
             <div class="intro-grid">
@@ -41,7 +42,7 @@
         </div>
         <div id="map" class="leaflet-map"></div>
 
-        <div class="map-wrap">
+        <div class="map-wrap reveal-on-scroll">
             <div class="map-head">
                 <h3>Google Map View</h3>
                 <a id="openGoogleNetwork" class="region-button secondary" href="#" target="_blank" rel="noopener noreferrer">Open in Google Maps</a>
@@ -60,8 +61,10 @@
         <div class="network-grid" id="stopsGrid"></div>
     </div>
 
+    <script src="public/config.js"></script>
+    <script src="public/animations.js"></script>
     <script>
-    const API_BASE_URL = "https://pbl-daa-1-1.onrender.com";
+    const API_BASE_URL = window.PBL_CONFIG.getApiBaseUrl();
     
     function apiUrl(path) {
         return `${API_BASE_URL}${path}`;
@@ -72,7 +75,7 @@
         return searchParams.get(param) || 'Uttarakhand';
     }
 
-    const region = getUrlParam('region');
+    const region = window.PBL_CONFIG.getRegion('region');
     const REGION_MAP = {
         'Uttarakhand': { name: 'Uttarakhand Hilly Region', routeLink: 'route.html?region=Uttarakhand' },
         'India': { name: 'India Wide Highways', routeLink: 'route.html?region=India' }
@@ -102,9 +105,26 @@
     }
 
     function initPage() {
+        const badge = document.getElementById('backendBadge');
+        badge.textContent = `Backend: ${API_BASE_URL}`;
+        fetch(apiUrl('/api/health'))
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(() => {
+                badge.textContent = `Backend: Connected (${API_BASE_URL})`;
+            })
+            .catch(() => {
+                badge.textContent = `Backend: Not reachable (${API_BASE_URL})`;
+            });
+
         document.getElementById('regionName').textContent = REGION_MAP[region]?.name || region;
-        document.getElementById('routeLink').href = REGION_MAP[region]?.routeLink || '#';
-        document.getElementById('networkLink').href = `network.html?region=${region}`;
+        document.getElementById('routeLink').href = `${REGION_MAP[region]?.routeLink || '#'}&backend=${encodeURIComponent(API_BASE_URL)}`;
+        document.getElementById('networkLink').href = `network.html?region=${region}&backend=${encodeURIComponent(API_BASE_URL)}`;
+        document.querySelector('.back-link').href = `index.html?backend=${encodeURIComponent(API_BASE_URL)}`;
         document.getElementById('mapDistance').innerText = 'Loading network...';
         
         // Fetch network data
@@ -228,6 +248,14 @@
                 </div>
             `;
             grid.appendChild(card);
+        });
+
+        // Reveal dynamically generated cards with staggered animation.
+        requestAnimationFrame(() => {
+            grid.querySelectorAll('.stop-card').forEach((card) => {
+                card.classList.add('reveal-on-scroll');
+                card.classList.add('is-visible');
+            });
         });
     }
 
