@@ -6,9 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚍</text></svg>">
     
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
     <div class="container">
@@ -29,7 +26,7 @@
             <h2>Explore Network Topology</h2>
             <p>Inspect stop-level connections, validate graph density, and open precise coordinates in Google Maps.</p>
             <div class="intro-grid">
-                <div class="intro-item"><strong>Views:</strong> Leaflet + Google</div>
+                <div class="intro-item"><strong>Views:</strong> Google Maps</div>
                 <div class="intro-item"><strong>Precision:</strong> Stop coordinate deep links</div>
                 <div class="intro-item"><strong>Data:</strong> Real backend graph nodes</div>
             </div>
@@ -39,21 +36,14 @@
             <h3>Interactive Network Map</h3>
             <span id="mapDistance"></span>
         </div>
-        <div id="map" class="leaflet-map"></div>
+        <div id="map" class="map-canvas"></div>
 
         <div class="map-wrap reveal-on-scroll">
             <div class="map-head">
                 <h3>Google Map View</h3>
                 <a id="openGoogleNetwork" class="region-button secondary" href="#" target="_blank" rel="noopener noreferrer">Open in Google Maps</a>
             </div>
-            <iframe
-                id="googleMapFrame"
-                class="google-map-embed"
-                title="Google map network view"
-                loading="lazy"
-                allowfullscreen
-                referrerpolicy="no-referrer-when-downgrade"
-            ></iframe>
+            <p id="googleMapHint" style="margin: 0; color: rgba(236, 255, 253, 0.93);">Use your API key to enable the interactive map. You can still open the region in Google Maps using the button.</p>
         </div>
 
         <h2 class="section-title">📍 Bus Stop Details</h2>
@@ -79,12 +69,14 @@
         'Uttarakhand': { name: 'Uttarakhand Hilly Region', routeLink: 'route.html?region=Uttarakhand' },
         'India': { name: 'India Wide Highways', routeLink: 'route.html?region=India' }
     };
+    const GOOGLE_MAPS_API_KEY = window.PBL_CONFIG.getGoogleMapsApiKey();
 
-    let map;
+    let map = null;
     let markers = [];
-    let routeLayer;
+    let networkLines = [];
     let coordinates = {};
     let graph = {};
+    let pendingCenter = null;
 
     function buildGoogleCoordsLink(lat, lng, zoom = 12) {
         return `https://www.google.com/maps/@${lat},${lng},${zoom}z`;
@@ -169,41 +161,125 @@
 
         setGoogleMapView(centerLat, centerLng, googleZoom);
 
-        map = L.map('map').setView([centerLat, centerLng], 8);
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors',
-            maxZoom: 18,
-        }).addTo(map);
-
-        addBusStopMarkers();
+        pendingCenter = { lat: centerLat, lng: centerLng, zoom: googleZoom };
+        loadGoogleMapsApi();
+        drawNetworkOnMap();
     }
 
     function setGoogleMapView(lat, lng, zoom) {
-        const googleFrame = document.getElementById('googleMapFrame');
         const openGoogleLink = document.getElementById('openGoogleNetwork');
-        const query = `${lat},${lng}`;
-
-        googleFrame.src = `https://www.google.com/maps?q=${encodeURIComponent(query)}&z=${zoom}&output=embed`;
         openGoogleLink.href = buildGoogleCoordsLink(lat, lng, zoom);
     }
 
-    function addBusStopMarkers() {
+    function loadGoogleMapsApi() {
+        if (window.google && window.google.maps) {
+            initGoogleMap();
+            return;
+        }
+
+        if (document.getElementById('googleMapsScript')) {
+            return;
+        }
+
+        if (!GOOGLE_MAPS_API_KEY) {
+            document.getElementById('googleMapHint').innerText = 'Google Maps API key is missing. Add ?google_maps_api_key=YOUR_KEY to the URL or set localStorage key pbl_google_maps_api_key.';
+            return;
+        }
+
+        window.initNetworkGoogleMap = initGoogleMap;
+        const script = document.createElement('script');
+        script.id = 'googleMapsScript';
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initNetworkGoogleMap`;
+        script.defer = true;
+        script.async = true;
+        script.onerror = function () {
+            document.getElementById('googleMapHint').innerText = 'Failed to load Google Maps JavaScript API. Verify your API key and billing setup.';
+        };
+        document.head.appendChild(script);
+    }
+
+    function initGoogleMap() {
+        if (map || !(window.google && window.google.maps)) {
+            return;
+        }
+
+        const center = pendingCenter || { lat: 20.5937, lng: 78.9629, zoom: 5 };
+        map = new google.maps.Map(document.getElementById('map'), {
+            center: { lat: center.lat, lng: center.lng },
+            zoom: center.zoom,
+            mapTypeControl: false,
+            streetViewControl: false
+        });
+
+        document.getElementById('googleMapHint').innerText = 'Interactive Google Map loaded.';
+        drawNetworkOnMap();
+    }
+
+    function drawNetworkOnMap() {
+        if (!map || !Object.keys(coordinates).length) {
+            return;
+        }
+
+        markers.forEach(marker => marker.setMap(null));
+        networkLines.forEach(line => line.setMap(null));
+        markers = [];
+        networkLines = [];
+
+        const infoWindow = new google.maps.InfoWindow();
+
         Object.entries(coordinates).forEach(([stopName, coords]) => {
             const stopGoogleLink = buildGoogleCoordsLink(coords[0], coords[1], 14);
-            const marker = L.marker([coords[0], coords[1]])
-                .addTo(map)
-                .bindPopup(`<b>${stopName}</b><br>Bus Stop<br><a href="${stopGoogleLink}" target="_blank" rel="noopener noreferrer">Open in Google Maps</a>`)
-                .bindTooltip(stopName, {permanent: false, direction: 'top'});
+            const marker = new google.maps.Marker({
+                position: { lat: coords[0], lng: coords[1] },
+                map,
+                title: stopName
+            });
+
+            marker.addListener('click', () => {
+                infoWindow.setContent(`<b>${stopName}</b><br>Bus Stop<br><a href="${stopGoogleLink}" target="_blank" rel="noopener noreferrer">Open in Google Maps</a>`);
+                infoWindow.open(map, marker);
+            });
+
             markers.push(marker);
         });
 
-        if (markers.length > 0) {
-            const group = new L.featureGroup(markers);
-            map.fitBounds(group.getBounds(), {padding: [20, 20]});
-        }
+        const renderedEdges = new Set();
+        Object.entries(graph).forEach(([stopName, connections]) => {
+            const from = coordinates[stopName];
+            if (!from) {
+                return;
+            }
 
-        setTimeout(() => map.invalidateSize(), 100);
+            connections.forEach(([neighbor]) => {
+                const to = coordinates[neighbor];
+                if (!to) {
+                    return;
+                }
+
+                const edgeKey = [stopName, neighbor].sort().join('||');
+                if (renderedEdges.has(edgeKey)) {
+                    return;
+                }
+                renderedEdges.add(edgeKey);
+
+                const line = new google.maps.Polyline({
+                    path: [
+                        { lat: from[0], lng: from[1] },
+                        { lat: to[0], lng: to[1] }
+                    ],
+                    geodesic: true,
+                    strokeColor: '#0fbab0',
+                    strokeOpacity: 0.5,
+                    strokeWeight: 2,
+                    map
+                });
+                networkLines.push(line);
+            });
+        });
+
+        const bounds = new google.maps.LatLngBounds();
+        Object.values(coordinates).forEach(([lat, lng]) => bounds.extend({ lat, lng }));
+        map.fitBounds(bounds);
     }
 
     function displayStops() {

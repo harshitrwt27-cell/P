@@ -1,6 +1,7 @@
 (function () {
     const REMOTE_BACKEND = 'https://pbl-daa-1-1.onrender.com';
     const STORAGE_KEY = 'pbl_backend_url';
+    const DEFAULT_GOOGLE_MAPS_API_KEY = '';
 
     function normalize(url) {
         if (!url || typeof url !== 'string') {
@@ -86,7 +87,12 @@
             return queryKey.trim();
         }
 
-        return (window.localStorage.getItem('pbl_google_maps_api_key') || '').trim();
+        const storedKey = (window.localStorage.getItem('pbl_google_maps_api_key') || '').trim();
+        if (storedKey) {
+            return storedKey;
+        }
+
+        return DEFAULT_GOOGLE_MAPS_API_KEY;
     }
 
     function getRegion(paramRegion) {

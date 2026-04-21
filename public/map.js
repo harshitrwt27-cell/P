@@ -1,23 +1,55 @@
-// Leaflet Map Configuration
+// Google Maps Configuration
 let map;
 let markers = [];
 let routeLayer;
 const ROUTE_COLOR = '#0fbab0';
-const START_COLOR = '#1eb79f';
-const END_COLOR = '#ff8f3d';
+
+function getGoogleMapsApiKey() {
+    if (window.PBL_CONFIG && typeof window.PBL_CONFIG.getGoogleMapsApiKey === 'function') {
+        return window.PBL_CONFIG.getGoogleMapsApiKey();
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    return (params.get('google_maps_api_key') || '').trim();
+}
+
+function loadGoogleMapsApi() {
+    if (window.google && window.google.maps) {
+        initMap();
+        return;
+    }
+
+    if (document.getElementById('googleMapsScript')) {
+        return;
+    }
+
+    const apiKey = getGoogleMapsApiKey();
+    if (!apiKey) {
+        return;
+    }
+
+    window.initPublicMap = initMap;
+    const script = document.createElement('script');
+    script.id = 'googleMapsScript';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=initPublicMap`;
+    script.defer = true;
+    script.async = true;
+    document.head.appendChild(script);
+}
 
 // Initialize map
 function initMap() {
-    // Center on Delhi
-    map = L.map('map').setView([28.6139, 77.2090], 11);
+    if (map || !(window.google && window.google.maps)) {
+        return;
+    }
 
-    // Add OpenStreetMap tiles
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 18,
-    }).addTo(map);
+    map = new google.maps.Map(document.getElementById('map'), {
+        center: { lat: 28.6139, lng: 77.2090 },
+        zoom: 11,
+        mapTypeControl: false,
+        streetViewControl: false
+    });
 
-    // Add bus stop markers
     addBusStopMarkers();
 }
 
@@ -34,10 +66,11 @@ const busStops = {
 
 function addBusStopMarkers() {
     Object.entries(busStops).forEach(([name, coords]) => {
-        const marker = L.marker(coords)
-            .addTo(map)
-            .bindPopup(`<b>${name}</b><br>Bus Stop`)
-            .bindTooltip(name, {permanent: false, direction: 'top'});
+        const marker = new google.maps.Marker({
+            position: { lat: coords[0], lng: coords[1] },
+            map,
+            title: name
+        });
 
         markers.push(marker);
     });
@@ -47,46 +80,33 @@ function addBusStopMarkers() {
 function drawRoute(path) {
     // Clear previous route
     if (routeLayer) {
-        map.removeLayer(routeLayer);
+        routeLayer.setMap(null);
     }
 
     if (!path || path.length < 2) return;
 
-    const routeCoords = path.map(stop => busStops[stop]);
-    routeLayer = L.polyline(routeCoords, {
-        color: ROUTE_COLOR,
-        weight: 4,
-        opacity: 0.8
-    }).addTo(map);
-
-    // Fit map to route
-    map.fitBounds(routeLayer.getBounds(), {padding: [20, 20]});
-
-    // Add start and end markers
-    const startIcon = L.divIcon({
-        html: `<div style="background: ${START_COLOR}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
-        className: 'custom-marker',
-        iconSize: [20, 20]
+    const routeCoords = path.map(stop => {
+        const [lat, lng] = busStops[stop];
+        return { lat, lng };
     });
 
-    const endIcon = L.divIcon({
-        html: `<div style="background: ${END_COLOR}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`,
-        className: 'custom-marker',
-        iconSize: [20, 20]
+    routeLayer = new google.maps.Polyline({
+        path: routeCoords,
+        geodesic: true,
+        strokeColor: ROUTE_COLOR,
+        strokeOpacity: 0.85,
+        strokeWeight: 5,
+        map
     });
 
-    L.marker(routeCoords[0], {icon: startIcon})
-        .addTo(map)
-        .bindPopup('<b>START</b><br>' + path[0]);
-
-    L.marker(routeCoords[routeCoords.length - 1], {icon: endIcon})
-        .addTo(map)
-        .bindPopup('<b>END</b><br>' + path[path.length - 1]);
+    const bounds = new google.maps.LatLngBounds();
+    routeCoords.forEach(point => bounds.extend(point));
+    map.fitBounds(bounds);
 }
 
 // Initialize map when page loads
 document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('map')) {
-        initMap();
+        loadGoogleMapsApi();
     }
 });

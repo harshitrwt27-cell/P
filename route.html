@@ -5,8 +5,6 @@
     <link rel="stylesheet" href="public/style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚍</text></svg>">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
     <div class="container">
@@ -81,7 +79,7 @@
                 <h3>Interactive Route Map</h3>
                 <span id="mapDistance"></span>
             </div>
-            <div id="map" class="leaflet-map"></div>
+            <div id="map" class="map-canvas"></div>
         </div>
     </div>
 
@@ -104,14 +102,17 @@
         'Uttarakhand': { name: 'Uttarakhand Hilly Region', networkLink: 'network.html?region=Uttarakhand' },
         'India': { name: 'India Wide Highways', networkLink: 'network.html?region=India' }
     };
+    const GOOGLE_MAPS_API_KEY = window.PBL_CONFIG.getGoogleMapsApiKey();
 
     let userLocation = null;
     let nearestStop = null;
     let stopsList = [];
     let currentRouteData = null;
     let map = null;
-    let routeLayer = null;
+    let directionsService = null;
+    let directionsRenderer = null;
     let routeMarkers = [];
+    let pendingRouteData = null;
 
     function showBlock(elementId) {
         document.getElementById(elementId).classList.remove('is-hidden');
@@ -156,13 +157,58 @@
         });
     }
 
+    function loadGoogleMapsApi() {
+        if (window.google && window.google.maps) {
+            initMapIfNeeded();
+            return;
+        }
+
+        if (document.getElementById('googleMapsScript')) {
+            return;
+        }
+
+        if (!GOOGLE_MAPS_API_KEY) {
+            showError('Google Maps API key is missing. Add ?google_maps_api_key=YOUR_KEY to the URL or set it via localStorage key pbl_google_maps_api_key.');
+            return;
+        }
+
+        window.initRouteGoogleMap = initMapIfNeeded;
+        const script = document.createElement('script');
+        script.id = 'googleMapsScript';
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initRouteGoogleMap`;
+        script.defer = true;
+        script.async = true;
+        script.onerror = function () {
+            showError('Failed to load Google Maps JavaScript API. Verify your API key and billing setup.');
+        };
+        document.head.appendChild(script);
+    }
+
     function initMapIfNeeded() {
-        if (map) return;
-        map = L.map('map').setView([20.5937, 78.9629], 5);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors',
-            maxZoom: 18
-        }).addTo(map);
+        if (map || !(window.google && window.google.maps)) return;
+
+        map = new google.maps.Map(document.getElementById('map'), {
+            center: { lat: 20.5937, lng: 78.9629 },
+            zoom: 5,
+            mapTypeControl: false,
+            streetViewControl: false
+        });
+
+        directionsService = new google.maps.DirectionsService();
+        directionsRenderer = new google.maps.DirectionsRenderer({
+            suppressMarkers: true,
+            polylineOptions: {
+                strokeColor: '#0fbab0',
+                strokeWeight: 5,
+                strokeOpacity: 0.9
+            }
+        });
+        directionsRenderer.setMap(map);
+
+        if (pendingRouteData) {
+            renderRouteOnGoogleMap(pendingRouteData);
+            pendingRouteData = null;
+        }
     }
 
     function populateStopsSelects() {
@@ -381,34 +427,66 @@
         showBlock('mapWrap');
         document.getElementById('mapDistance').innerText = `Distance: ${data.distance} km | Time: ${data.time} h`;
 
-        initMapIfNeeded();
+        loadGoogleMapsApi();
 
-        if (routeLayer) {
-            map.removeLayer(routeLayer);
+        if (!map || !directionsService || !directionsRenderer) {
+            pendingRouteData = data;
+            return;
         }
-        routeMarkers.forEach(marker => map.removeLayer(marker));
+
+        renderRouteOnGoogleMap(data);
+    }
+
+    function renderRouteOnGoogleMap(data) {
+        routeMarkers.forEach(marker => marker.setMap(null));
         routeMarkers = [];
 
-        routeLayer = L.polyline([], {
-            color: '#0fbab0',
-            weight: 5,
-            opacity: 0.86
-        }).addTo(map);
+        const origin = { lat: data.coordinates[0][0], lng: data.coordinates[0][1] };
+        const destinationCoord = data.coordinates[data.coordinates.length - 1];
+        const destination = { lat: destinationCoord[0], lng: destinationCoord[1] };
+        const waypoints = data.coordinates.slice(1, -1).map(([lat, lng]) => ({
+            location: { lat, lng },
+            stopover: false
+        }));
 
-        data.coordinates.forEach((coord, index) => {
-            setTimeout(() => {
-                routeLayer.addLatLng(coord);
-                if (index === data.coordinates.length - 1) {
-                    map.fitBounds(routeLayer.getBounds(), { padding: [24, 24] });
-                }
-            }, index * 120);
+        directionsService.route({
+            origin,
+            destination,
+            waypoints,
+            travelMode: google.maps.TravelMode.DRIVING,
+            optimizeWaypoints: false
+        }, (response, status) => {
+            if (status === google.maps.DirectionsStatus.OK || status === 'OK') {
+                directionsRenderer.setDirections(response);
+            } else {
+                directionsRenderer.set('directions', null);
+                const fallbackLine = new google.maps.Polyline({
+                    path: data.coordinates.map(([lat, lng]) => ({ lat, lng })),
+                    geodesic: true,
+                    strokeColor: '#0fbab0',
+                    strokeOpacity: 0.9,
+                    strokeWeight: 5,
+                    map
+                });
+                routeMarkers.push(fallbackLine);
+            }
+
+            const startMarker = new google.maps.Marker({
+                position: origin,
+                map,
+                title: `START - ${data.path[0]}`
+            });
+            const endMarker = new google.maps.Marker({
+                position: destination,
+                map,
+                title: `END - ${data.path[data.path.length - 1]}`
+            });
+            routeMarkers.push(startMarker, endMarker);
+
+            const bounds = new google.maps.LatLngBounds();
+            data.coordinates.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
+            map.fitBounds(bounds);
         });
-
-        const startMarker = L.marker(data.coordinates[0]).addTo(map).bindPopup(`<b>START</b><br>${data.path[0]}`);
-        const endMarker = L.marker(data.coordinates[data.coordinates.length - 1]).addTo(map)
-            .bindPopup(`<b>END</b><br>${data.path[data.path.length - 1]}`);
-        routeMarkers.push(startMarker, endMarker);
-        setTimeout(() => map.invalidateSize(), 100);
     }
 
     function bookRoute() {
@@ -464,7 +542,10 @@
         window.open(currentRouteData.map_link, '_blank');
     }
 
-    document.addEventListener('DOMContentLoaded', initPage);
+    document.addEventListener('DOMContentLoaded', function() {
+        initPage();
+        loadGoogleMapsApi();
+    });
     </script>
 </body>
 </html>

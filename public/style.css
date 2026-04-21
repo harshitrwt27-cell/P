@@ -686,7 +686,7 @@ button:disabled {
 }
 
 #map,
-.leaflet-map {
+.map-canvas {
     width: 100%;
     height: 580px;
     margin: 12px 0;
@@ -805,7 +805,7 @@ button:disabled {
     }
 
     #map,
-    .leaflet-map {
+    .map-canvas {
         height: 430px;
     }
 
